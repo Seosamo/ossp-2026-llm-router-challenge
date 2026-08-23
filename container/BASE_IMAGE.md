@@ -5,19 +5,43 @@ SPDX-License-Identifier: Apache-2.0
 
 # 기반 이미지 기록
 
-제공하는 기준 컨테이너 예시는 Docker Official Image인
-`python:3.11.15-alpine3.23`을 사용합니다.
+이 라우터(`ossp_router.learned_router`)는 lightgbm/scikit-learn/scipy/numpy에
+의존하는데, 이 패키지들은 `linux/arm64`용 musllinux(Alpine) wheel을 배포하지
+않습니다. 원래 예시가 사용하던 `python:3.11.15-alpine3.23`(musl libc) 위에서는
+`pip install`이 소스 빌드로 빠지거나 실패하므로, glibc 계열인 Docker Official
+Image `python:3.11-slim-bookworm`(Debian 12 "bookworm")로 교체했습니다.
+README.md는 특정 기반 이미지를 강제하지 않고 `linux/arm64` + `router-run`
+인터페이스 + 실행 중 네트워크 없음만 요구합니다(`docs/RUNTIME.md`).
+
+- [Docker Official Images의 Python 항목](https://github.com/docker-library/official-images/blob/master/library/python)
+- 태그: `python:3.11-slim-bookworm` (Debian 12, glibc)
+
+빌드 시점에 정확한 다중 플랫폼 다이제스트를 고정하려면 제출 전 다음 명령으로
+현재 태그가 가리키는 다이제스트를 확인하고 Dockerfile의 `FROM` 줄을
+`python:3.11-slim-bookworm@sha256:<다이제스트>` 형태로 갱신해야 합니다
+(다이제스트 고정 없이 태그만 쓰면 빌드 재현성이 깨집니다).
+
+```console
+docker buildx imagetools inspect python:3.11-slim-bookworm
+```
+
+## 원래 예시 (참고용, 현재 미사용)
+
+제공하던 기준 컨테이너 예시는 Docker Official Image인
+`python:3.11.15-alpine3.23`을 사용했습니다.
 
 - 다중 플랫폼 인덱스 다이제스트:
   `sha256:f73754c398b259dfbbe482361dca8b464dea57da74efe5214966ca2ee767ee12`
-- 공식 선택 플랫폼: `linux/arm64`
-- [Docker Official Images의 Python 항목](https://github.com/docker-library/official-images/blob/master/library/python)
 - [고정한 빌드 조리법](https://github.com/docker-library/python/blob/4d216ad3beb5b697c4049071c82fc375acb8abad/3.11/alpine3.23/Dockerfile)
 
 공식 이미지 항목은 이 태그가 여러 플랫폼을 지원하고 조리법이
 `docker-library/python`의 커밋
 `4d216ad3beb5b697c4049071c82fc375acb8abad`, 디렉터리
 `3.11/alpine3.23`에서 왔음을 기록합니다.
+
+라우터에 필요한 학습된 분류기, 임베딩 모델과 Python 패키지의 이름·버전·
+라이선스·SHA-256은 [`MODEL_AND_DEPENDENCY_NOTICES.md`](MODEL_AND_DEPENDENCY_NOTICES.md)에
+기록합니다.
 
 이 저장소의 Apache-2.0 라이선스는 기반 이미지 안의 Python, Alpine과 개별
 패키지를 재라이선스하지 않습니다. 이미지를 배포할 때는 이미지 안의
