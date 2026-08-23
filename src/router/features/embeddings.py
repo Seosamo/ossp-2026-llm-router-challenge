@@ -1,11 +1,22 @@
 """Sentence embedding backends (§5.1).
 
 Two implementations behind one interface:
-    - SentenceTransformerBackend: primary path, uses the `sentence-transformers`
-      library, which already implements E5-correct mean pooling + L2 normalize.
-    - OnnxEmbeddingBackend: fallback path for the §10.1 ARM-latency contingency --
-      ONNX Runtime has no built-in pooler, so mean pooling (weighted by the
-      attention mask) and L2 normalization are implemented by hand here.
+    - SentenceTransformerBackend: uses the `sentence-transformers` library,
+      which already implements E5-correct mean pooling + L2 normalize. Pulls
+      in torch + transformers -- on linux/arm64 this drags in multi-GB NVIDIA
+      CUDA libraries as a transitive dependency of plain "pip install torch"
+      even though the submission container is CPU-only, and the full stack
+      does not fit the container's 1 GiB compressed-image budget
+      (docs/RUNTIME.md). Kept for local development/offline training use.
+    - OnnxEmbeddingBackend: the §10.1 ARM-latency contingency path, and what
+      the submission container actually uses -- onnxruntime alone is tens of
+      MB with no torch dependency at all. ONNX Runtime has no built-in
+      pooler, so mean pooling (weighted by the attention mask) and L2
+      normalization are implemented by hand here. Verified numerically
+      identical (cosine similarity 1.0) to SentenceTransformerBackend for the
+      unquantized export; the shipped int8-quantized model trades a small,
+      accepted accuracy loss (cosine similarity ~0.987-0.99) for a ~4x size
+      reduction (470MB -> 118MB) -- see router/scripts/export_embedding_onnx.py.
 
 Both backends apply the mandatory "query: " prefix (§5.1 필수 준수사항 #1) and
 truncate at EMBEDDING_MAX_TOKENS (#3) identically at train and inference time.
@@ -18,6 +29,7 @@ mode without any structural change -- just a shorter feature vector.
 from __future__ import annotations
 
 import abc
+from pathlib import Path
 from typing import List
 
 import numpy as np
@@ -49,6 +61,16 @@ class SentenceTransformerBackend(EmbeddingBackend):
 
 
 class OnnxEmbeddingBackend(EmbeddingBackend):
+    # SentenceTransformer.encode() batches internally (default batch_size=32);
+    # this backend must do the same. Padding pads every sequence in a call to
+    # the longest one IN THAT CALL, so passing hundreds/thousands of texts at
+    # once (e.g. a full Train batch, see FeatureExtractor.transform) pads them
+    # all to the single longest text's length and allocates the whole
+    # batch x seq_len x hidden intermediate tensors at once -- this has been
+    # observed to fail ("bad allocation" in a MatMul node) at real Train batch
+    # sizes (~1,760 rows, some near the 512-token truncation limit).
+    _BATCH_SIZE = 32
+
     def __init__(self, model_path: str, tokenizer_path: str):
         import onnxruntime as ort  # lazy import
         from transformers import AutoTokenizer  # lazy import
@@ -65,10 +87,9 @@ class OnnxEmbeddingBackend(EmbeddingBackend):
         counts = np.clip(mask.sum(axis=1), a_min=1e-9, a_max=None)
         return summed / counts
 
-    def encode(self, texts: List[str]) -> np.ndarray:
-        prefixed = [E5_QUERY_PREFIX + t for t in texts]
+    def _encode_chunk(self, chunk: List[str]) -> np.ndarray:
         encoded = self._tokenizer(
-            prefixed,
+            chunk,
             padding=True,
             truncation=True,
             max_length=EMBEDDING_MAX_TOKENS,
@@ -86,6 +107,14 @@ class OnnxEmbeddingBackend(EmbeddingBackend):
         norms = np.linalg.norm(pooled, axis=1, keepdims=True)
         return (pooled / np.clip(norms, 1e-9, None)).astype(np.float32)
 
+    def encode(self, texts: List[str]) -> np.ndarray:
+        prefixed = [E5_QUERY_PREFIX + t for t in texts]
+        chunks = [
+            self._encode_chunk(prefixed[i : i + self._BATCH_SIZE])
+            for i in range(0, len(prefixed), self._BATCH_SIZE)
+        ]
+        return np.concatenate(chunks, axis=0) if chunks else np.zeros((0, 0), dtype=np.float32)
+
 
 def build_embedding_backend(cfg) -> EmbeddingBackend | None:
     """cfg is the router.config module (or a stand-in with the same attributes).
@@ -101,8 +130,9 @@ def build_embedding_backend(cfg) -> EmbeddingBackend | None:
             revision=getattr(cfg, "EMBEDDING_MODEL_PRIMARY_REVISION", None),
         )
     if cfg.EMBEDDING_BACKEND == "onnxruntime":
-        raise NotImplementedError(
-            "ONNX backend requires exported model/tokenizer paths; wire these up "
-            "once the §10.1 ARM benchmark selects this path."
+        onnx_dir = Path(cfg.EMBEDDING_ONNX_DIR)
+        return OnnxEmbeddingBackend(
+            model_path=str(onnx_dir / cfg.EMBEDDING_ONNX_MODEL_FILENAME),
+            tokenizer_path=str(onnx_dir),
         )
     raise ValueError(f"unknown embedding backend: {cfg.EMBEDDING_BACKEND!r}")

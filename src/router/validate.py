@@ -97,14 +97,23 @@ def check_challenge_split_dependence(pipeline: RouterPipeline, df: pd.DataFrame)
 
 
 def check_batch_invariance(pipeline: RouterPipeline, df: pd.DataFrame) -> ValidationResult:
-    batch_result = pipeline.predict_batch(df, tier="Balanced")
+    try:
+        batch_result = pipeline.predict_batch(df, tier="Balanced")
+    except Exception as exc:  # a pipeline whose batch path is broken enough to
+        # crash is exactly as much a B4 failure as one that silently disagrees.
+        return ValidationResult(
+            name="B4_batch_invariance", passed=False, details=f"predict_batch raised: {exc!r}"
+        )
+
     mismatched = 0
     for _, row in df.iterrows():
-        single_result = pipeline.predict(row["text"], tier="Balanced")
-        batch_decision = batch_result.loc[
-            batch_result["episode_id"] == row["episode_id"], "decision"
-        ].iloc[0]
-        if single_result["decision"] != batch_decision:
+        try:
+            single_decision = pipeline.predict(row["text"], tier="Balanced")["decision"]
+        except Exception as exc:
+            single_decision = f"<error: {exc!r}>"
+        matches = batch_result.loc[batch_result["episode_id"] == row["episode_id"], "decision"]
+        batch_decision = matches.iloc[0] if len(matches) else "<missing from batch output>"
+        if single_decision != batch_decision:
             mismatched += 1
     passed = mismatched == 0
     return ValidationResult(

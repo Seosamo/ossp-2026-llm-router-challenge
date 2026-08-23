@@ -7,12 +7,11 @@ from __future__ import annotations
 
 import types
 
-import numpy as np
 import pandas as pd
 import pytest
 
 from router import config as router_config
-from router.decision import decide
+from router.config import MODELS
 from router.pipeline import RouterPipeline
 from router.schema import join_prompts
 from router.synthetic_data import generate_synthetic_dataset
@@ -47,27 +46,25 @@ def dev_df(synthetic_data):
 
 
 class BatchLeakingPipeline(RouterPipeline):
-    """Violates the B4 invariant on purpose: predict_batch perturbs each row's
-    p_hat using a batch-wide statistic (the batch mean of ax31-light's p_hat)
-    before deciding, so its output differs from calling predict() row-by-row.
+    """Violates the B4 invariant on purpose: predict_batch overrides the first
+    row's decision to a different model than single-row prediction would give,
+    simulating a decision that depends on batch position/composition rather than
+    on that row's content alone.
+
+    (An earlier version of this fixture only nudged p_hat by a small batch-mean-
+    derived factor, which turned out to be too small to ever flip an argmax given
+    how cost-dominated the utility function is on this tiny synthetic dataset --
+    the injected bug must be large enough to be *detectable*, not just present.)
     """
 
     def predict_batch(self, df: pd.DataFrame, tier: str) -> pd.DataFrame:
-        from router.config import K_M, TOKEN_ACCOUNTING, get_lambda
-        from router.models.input_tokens import build_simple_features
-
-        rows = []
-        for _, row in df.iterrows():
-            rows.append(self._predict_row(row["text"], tier))
-
-        batch_mean_light = float(np.mean([r["p_hat"]["ax31-light"] for r in rows]))
-        lam = get_lambda(tier, TOKEN_ACCOUNTING)
-
         records = []
-        for (_, row), result in zip(df.iterrows(), rows):
-            leaked_p_hat = dict(result["p_hat"])
-            leaked_p_hat["ax31-light"] *= 1.0 + 0.5 * (batch_mean_light - 0.5)
-            decision = decide(leaked_p_hat, result["cost_hat"], lam)
+        for i, (_, row) in enumerate(df.iterrows()):
+            decision = self._predict_row(row["text"], tier)["decision"]
+            if i == 0:
+                order = list(MODELS)
+                shifted = order[(order.index(decision) + 1) % len(order)]
+                decision = shifted
             records.append({"episode_id": row.get("episode_id"), "decision": decision})
         return pd.DataFrame.from_records(records)
 

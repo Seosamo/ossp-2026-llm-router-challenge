@@ -8,20 +8,24 @@
 # Deliberately narrower than router/requirements.txt: pandas/pyarrow/pytest are
 # dev/offline-training-only (router/ossp_adapter.py, router/scripts/train.py) --
 # ossp_router.learned_router reads InputBatch JSON directly and calls
-# RouterPipeline.estimate_texts()/predict_texts(), never pandas. onnxruntime is
-# not used because EMBEDDING_BACKEND="sentence_transformers" (router/config.py).
-# Leaving either out of this file keeps them out of the submission image
-# entirely (image-size risk, see docs/RUNTIME.md's 1 GiB compressed-layer /
-# 2 GiB rootfs limits).
+# RouterPipeline.estimate_texts()/predict_texts(), never pandas.
 #
-# torch is intentionally NOT listed here even though sentence-transformers
-# needs it -- container/Dockerfile installs it in a separate, earlier pip
-# invocation from PyTorch's CPU-only index, because the plain PyPI "torch"
-# wheel for linux/aarch64 pulls in multi-GB NVIDIA CUDA libraries this
-# CPU-only, GPU-less container never uses.
+# No torch, no sentence-transformers: router/config.py's
+# EMBEDDING_BACKEND="onnxruntime" uses OnnxEmbeddingBackend
+# (router/features/embeddings.py) against a model exported offline by
+# router/scripts/export_embedding_onnx.py (see container/Dockerfile's
+# COPY of artifacts/e5-small-onnx/). Plain "pip install torch" on
+# linux/aarch64 resolves to a build bundling several GB of NVIDIA CUDA
+# libraries this CPU-only, GPU-less container never uses -- onnxruntime alone
+# is tens of MB with no such dependency, and was the actual fix for this
+# image blowing the 1 GiB compressed-layer budget (docs/RUNTIME.md).
 lightgbm>=4.0,<4.6
 scikit-learn>=1.3,<1.6
 numpy>=1.24,<2
 scipy>=1.10,<2
 joblib>=1.3,<2
-sentence-transformers>=2.2,<3
+onnxruntime>=1.16,<2
+# transformers here is tokenizer-only (AutoTokenizer.from_pretrained in
+# OnnxEmbeddingBackend) -- it does not require torch to be installed, and
+# none of its torch-dependent code paths are used.
+transformers>=4.30,<5

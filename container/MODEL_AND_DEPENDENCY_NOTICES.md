@@ -14,32 +14,42 @@ submission image. This covers the learned router
 
 - **Name**: `intfloat/multilingual-e5-small`
 - **Purpose**: sentence embedding branch of the feature extractor
-  (`router/features/embeddings.py::SentenceTransformerBackend`), §5.1 of the
+  (`router/features/embeddings.py::OnnxEmbeddingBackend`), §5.1 of the
   router's design doc.
 - **Upstream**: <https://huggingface.co/intfloat/multilingual-e5-small>
-- **Pinned revision**: `614241f622f53c4eeff9890bdc4f31cfecc418b3` (also set as
-  `container/Dockerfile`'s `E5_SMALL_REVISION` build arg -- keep both in sync)
+- **Pinned revision**: `614241f622f53c4eeff9890bdc4f31cfecc418b3` (matches
+  `router/config.py`'s `EMBEDDING_MODEL_PRIMARY_REVISION`)
 - **License**: MIT (weights are openly published, satisfying
   `docs/CHALLENGE_RULES.md`'s "가중치를 공개한 모델" requirement)
-- **File SHA-256** (at the pinned revision):
-
-  | file | SHA-256 |
-  | --- | --- |
-  | `model.safetensors` | `1a55775f53449dac10a2bcbc312469fac40b96d53198c407081a831f81c98477`* |
-  | `tokenizer.json` | `0b44a9d7b51c3c62626640cda0e2c2f70fdacdc25bbbd68038369d14ebdf4c39`* |
-  | `sentencepiece.bpe.model` | `cfc8146abe2a0488e9e2a0c56de7952f7c11ab059eca145a0a727afce0db2865`* |
-  | `config.json` | `69137736cab8b8903a07fe8afaafdda25aac55415a12a55d1bffa9f581abf959`* |
-  | `sentence_bert_config.json` | `948201d8329907aae938fa62f9ceeed53f5694dacc2b87b9f3b78b37ee986529`* |
-  | `special_tokens_map.json` | `d05497f1da52c5e09554c0cd874037a083e1dc1b9cfd48034d1c717f1afc07a7`* |
-  | `tokenizer_config.json` | `a1d6bc8734a6f635dc158508bef000f8e2e5a759c7d92f984b2c86e5ff53425b`* |
-  | `modules.json` | `c6e29747481e8b5dd2b58401966aeac910de39092f90cda9a704b1545f902b04`* |
-
-  \* Computed locally from the huggingface_hub cache after downloading the
-  pinned revision; re-verify against the upstream repo (or
-  `huggingface-cli scan-cache` output) before final submission, since this
-  table was produced on a development machine, not in the submission build
-  itself.
-- Not fine-tuned; used as published.
+- **Not shipped as originally published** -- exported to ONNX and
+  int8-quantized offline by `router/scripts/export_embedding_onnx.py`
+  (base `AutoModel` graph, output `last_hidden_state`; mean-pooling and
+  L2-normalization are done by hand in `OnnxEmbeddingBackend`, replicating
+  what `sentence-transformers` does internally). Verified numerically
+  identical (cosine similarity 1.0, max abs diff 0.0 across sample texts) to
+  the original model's embeddings before quantization; the shipped
+  int8-quantized version trades a small, accepted accuracy loss (cosine
+  similarity ~0.987-0.99 vs. the unquantized export) for a ~4x size
+  reduction (470MB -> 118MB) -- necessary to fit the container's 1 GiB
+  compressed-image budget (`docs/RUNTIME.md`). The `router.RouterPipeline`
+  was retrained/recalibrated against this exact exported model, not the
+  original, so training-time and inference-time features match exactly.
+- **Why not shipped via `sentence-transformers`/torch directly**: plain
+  `pip install torch` on linux/aarch64 resolves to a build bundling several
+  GB of NVIDIA CUDA libraries (server-GPU support this CPU-only, GPU-less
+  container never uses), which alone exceeded the 1 GiB compressed-image
+  budget. `onnxruntime` has no such dependency.
+- **Committed as split files**: `artifacts/e5-small-onnx/model.int8.onnx.part-00/01/02`
+  (each <42MB) instead of one 118MB file, because GitHub rejects files over
+  100MB without Git LFS. Git LFS was deliberately avoided: an evaluator that
+  clones/exports the repo without `git lfs pull` would silently get tiny LFS
+  pointer files instead of the real model. `container/Dockerfile`
+  reassembles the parts (`cat model.int8.onnx.part-* > model.int8.onnx`) at
+  build time; a plain `git clone` always has the real bytes, so this has no
+  such failure mode. Reassembly was verified byte-identical to the original
+  file (SHA-256 `a7c69598a26e0f4d6de0e685fa816c20bfba2fcf74d95857faac547bb5fd69e9`)
+  before the original was deleted from the working tree.
+- Not fine-tuned; used as published (aside from the ONNX export + quantization above).
 
 ## Python runtime dependencies (`container/requirements-runtime.txt`)
 
@@ -53,11 +63,13 @@ Installed at image build time only (no network at container runtime,
 | numpy | BSD-3-Clause | array plumbing |
 | scipy | BSD-3-Clause | sparse-matrix support for scikit-learn |
 | joblib | BSD-3-Clause | pipeline artifact (de)serialization |
-| sentence-transformers | Apache-2.0 | embedding backend wrapper |
-| torch (installed separately, CPU-only from `download.pytorch.org/whl/cpu`) | BSD-3-Clause | sentence-transformers' inference backend |
-| transformers (transitive) | Apache-2.0 | tokenizer/model loading for the embedding backend |
-| tokenizers (transitive) | Apache-2.0 | fast tokenization |
-| safetensors (transitive) | Apache-2.0 | model weight format |
+| onnxruntime | MIT | embedding model inference (CPU) |
+| transformers (tokenizer-only; torch is NOT installed) | Apache-2.0 | `AutoTokenizer` for the embedding backend |
+
+Dev/offline-only tools used to PRODUCE `artifacts/e5-small-onnx/` (NOT part of
+the runtime image): `torch`, `transformers` (with torch), `sentence-transformers`
+(for the numerical cross-check against the ONNX export) -- see
+`router/requirements.txt` and `router/scripts/export_embedding_onnx.py`.
 
 Exact resolved versions depend on `container/requirements-runtime.txt`'s
 ranges at actual build time; capture the real submission build's dependency

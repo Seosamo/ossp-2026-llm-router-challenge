@@ -6,6 +6,7 @@ choice) is called out in a comment rather than silently baked into downstream co
 
 from __future__ import annotations
 
+import os
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Dict, Literal, Tuple
@@ -107,7 +108,23 @@ def get_lambda(tier: str, accounting: str | None = None) -> float:
 # back to TF-IDF-only mode (§10.1 "실패" path) without restructuring the extractor.
 USE_EMBEDDING_BRANCH: bool = True
 
-EMBEDDING_BACKEND: Literal["sentence_transformers", "onnxruntime"] = "sentence_transformers"
+# §10.1 ARM latency/image-size gate result: "sentence_transformers" pulls in
+# torch, which resolves to a multi-GB CUDA-bundled build on linux/arm64 and
+# does not fit the submission container's 1 GiB compressed-image budget
+# (docs/RUNTIME.md) -- see router/scripts/export_embedding_onnx.py and
+# features/embeddings.py's module docstring. "onnxruntime" is what ships.
+EMBEDDING_BACKEND: Literal["sentence_transformers", "onnxruntime"] = "onnxruntime"
+
+# Directory containing the exported {model file, tokenizer files} produced by
+# router/scripts/export_embedding_onnx.py. Overridable via
+# ROUTER_EMBEDDING_ONNX_DIR so the same config resolves a local dev path and
+# the container's baked-in path (e.g. /opt/router/artifacts/e5-small-onnx,
+# set by container/Dockerfile) without a code change.
+EMBEDDING_ONNX_DIR: str = os.environ.get("ROUTER_EMBEDDING_ONNX_DIR", "router/artifacts/e5-small-onnx")
+# int8 dynamic quantization: 470MB -> 118MB, verified against the fp32 export
+# at cosine similarity ~0.987-0.99 (a small, accepted accuracy trade for
+# fitting the image-size budget with real margin).
+EMBEDDING_ONNX_MODEL_FILENAME: str = "model.int8.onnx"
 
 # Primary per §5.1: 384-dim, MIT license, chosen for its small size relative to the
 # 1,760-example training set (larger models were observed/reasoned to overfit).
