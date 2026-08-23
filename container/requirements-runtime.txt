@@ -13,6 +13,12 @@
 # Leaving either out of this file keeps them out of the submission image
 # entirely (image-size risk, see docs/RUNTIME.md's 1 GiB compressed-layer /
 # 2 GiB rootfs limits).
+#
+# torch is intentionally NOT listed here even though sentence-transformers
+# needs it -- container/Dockerfile installs it in a separate, earlier pip
+# invocation from PyTorch's CPU-only index, because the plain PyPI "torch"
+# wheel for linux/aarch64 pulls in multi-GB NVIDIA CUDA libraries this
+# CPU-only, GPU-less container never uses.
 lightgbm>=4.0,<4.6
 scikit-learn>=1.3,<1.6
 numpy>=1.24,<2

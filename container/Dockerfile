@@ -19,8 +19,25 @@
 FROM python:3.11-slim-bookworm AS builder
 
 WORKDIR /build
+
+# PyPI's plain "torch" wheel for linux/aarch64 bundles NVIDIA CUDA libraries
+# (cuBLAS/cuDNN/NCCL/...) intended for ARM server GPUs (e.g. NVIDIA Grace) --
+# several GB by itself, even though this router only ever does CPU inference
+# and the container has no GPU (docs/RUNTIME.md). Installing torch ALONE
+# first, from PyTorch's dedicated CPU-only index, avoids that resolution
+# entirely. Must be its own pip invocation with no other index: mixing in
+# --extra-index-url PyPI here risks pip preferring a newer default (CUDA)
+# build over the CPU one.
+RUN python3 -m pip install --no-cache-dir --prefix=/install \
+    --index-url https://download.pytorch.org/whl/cpu \
+    "torch>=1.11.0"
+
 COPY container/requirements-runtime.txt .
-RUN python3 -m pip install --no-cache-dir --prefix=/install -r requirements-runtime.txt
+# PYTHONPATH lets this second pip see the CPU-only torch already installed
+# above (same --prefix) and skip re-resolving it from the default PyPI index
+# via sentence-transformers' torch>=1.11.0 dependency.
+RUN PYTHONPATH=/install/lib/python3.11/site-packages \
+    python3 -m pip install --no-cache-dir --prefix=/install -r requirements-runtime.txt
 
 # Bake the embedding model into the image at build time (network access is
 # allowed during build, never at runtime -- docs/SUBMISSION.md). Pinned to an

@@ -54,7 +54,7 @@ Installed at image build time only (no network at container runtime,
 | scipy | BSD-3-Clause | sparse-matrix support for scikit-learn |
 | joblib | BSD-3-Clause | pipeline artifact (de)serialization |
 | sentence-transformers | Apache-2.0 | embedding backend wrapper |
-| torch (transitive, CPU build) | BSD-3-Clause | sentence-transformers' inference backend |
+| torch (installed separately, CPU-only from `download.pytorch.org/whl/cpu`) | BSD-3-Clause | sentence-transformers' inference backend |
 | transformers (transitive) | Apache-2.0 | tokenizer/model loading for the embedding backend |
 | tokenizers (transitive) | Apache-2.0 | fast tokenization |
 | safetensors (transitive) | Apache-2.0 | model weight format |
