@@ -104,7 +104,7 @@ def _resolve_image(docker: str, image: str) -> str:
         metadata = inspect_image_runtime_metadata(
             [docker],
             image,
-            platform=OFFICIAL_CONTAINER_PLATFORM,
+            # platform=OFFICIAL_CONTAINER_PLATFORM,
         )
         validate_image_configuration(metadata)
     except (InfrastructureUnavailable, ValueError) as exc:
