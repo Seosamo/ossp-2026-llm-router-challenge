@@ -57,7 +57,25 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
     ROUTER_PIPELINE_DIR=/opt/router/artifacts/router-model \
     ROUTER_EMBEDDING_ONNX_DIR=/opt/router/artifacts/e5-small-onnx \
     HF_HUB_OFFLINE=1 \
-    TRANSFORMERS_OFFLINE=1
+    TRANSFORMERS_OFFLINE=1 \
+    OPENBLAS_NUM_THREADS=1 \
+    OMP_NUM_THREADS=1 \
+    MKL_NUM_THREADS=1 \
+    NUMEXPR_NUM_THREADS=1 \
+    VECLIB_MAXIMUM_THREADS=1
+
+# numpy/scipy/scikit-learn (via OpenBLAS) auto-detect thread count from the
+# CPU count they can see, which inside a container is not reliably clamped
+# to --cpus 2 -- observed in practice trying to spawn up to 64 threads
+# (matching the *host's* core count) and hitting the container's
+# --pids-limit 32 (process+thread total, docs/RUNTIME.md), with every failed
+# pthread_create burning time inside the 90-seconds-per-tier budget. The
+# OPENBLAS/OMP/MKL/NUMEXPR *_NUM_THREADS env vars above are the fix;
+# LightGBM is separately pinned via router/config.py's LGBM_COMMON_PARAMS
+# (num_threads=1, load-bearing for validate.py's repeatability check), and
+# onnxruntime's own thread pool is capped in code
+# (router/features/embeddings.py::OnnxEmbeddingBackend) since it does not
+# reliably honor these environment variables.
 
 COPY --chown=65532:65532 src container/entrypoint.py /opt/router/
 COPY --chown=65532:65532 artifacts/router-model /opt/router/artifacts/router-model

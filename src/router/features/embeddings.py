@@ -75,7 +75,23 @@ class OnnxEmbeddingBackend(EmbeddingBackend):
         import onnxruntime as ort  # lazy import
         from transformers import AutoTokenizer  # lazy import
 
-        self._session = ort.InferenceSession(model_path)
+        # onnxruntime auto-sizes its thread pool from the number of CPUs it
+        # sees, which inside a container can still be the HOST's full core
+        # count (cgroup CPU quotas are not always honored) rather than the
+        # container's --cpus 2 allocation. Left unbounded, this competes with
+        # OpenBLAS's own thread pool (see router/config.py's OPENBLAS_NUM_THREADS
+        # etc.) for the container's --pids-limit 32 budget -- observed in
+        # practice to blow that budget (pthread_create failing past thread
+        # ~32) and burn most of the 90s-per-tier budget on failed retries
+        # rather than actual work (docs/RUNTIME.md). Capped explicitly here
+        # since (unlike OpenBLAS) onnxruntime does not reliably respect the
+        # OMP_NUM_THREADS-style environment variables.
+        session_options = ort.SessionOptions()
+        session_options.intra_op_num_threads = 2
+        session_options.inter_op_num_threads = 1
+        session_options.execution_mode = ort.ExecutionMode.ORT_SEQUENTIAL
+
+        self._session = ort.InferenceSession(model_path, sess_options=session_options)
         self._tokenizer = AutoTokenizer.from_pretrained(tokenizer_path)
 
     def _mean_pool(self, token_embeddings: np.ndarray, attention_mask: np.ndarray) -> np.ndarray:
