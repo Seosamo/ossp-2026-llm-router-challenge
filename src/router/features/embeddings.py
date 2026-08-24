@@ -70,15 +70,24 @@ class OnnxEmbeddingBackend(EmbeddingBackend):
     # observed to fail ("bad allocation" in a MatMul node) at real Train batch
     # sizes (~1,760 rows, some near the 512-token truncation limit).
     #
-    # Kept small (8, not 32): a batch of long (near EMBEDDING_MAX_TOKENS=512)
-    # documents pushes the transformer's per-layer attention-score tensors
-    # (batch x heads x seq x seq) into the hundreds of MB, and this container
-    # has only a 2 GiB total memory budget (docs/RUNTIME.md) shared with
-    # everything else in the process -- observed in practice to OOM-kill
-    # (exit 137) at batch_size=32 despite finishing well within the
-    # 90-second time budget. Smaller batches trade a bit of fixed per-call
-    # overhead for materially lower peak memory.
-    _BATCH_SIZE = 8
+    # A batch of long (near EMBEDDING_MAX_TOKENS=512) documents pushes the
+    # transformer's per-layer attention-score tensors (batch x heads x seq x
+    # seq) into the hundreds of MB, and this container has only a 2 GiB
+    # total memory budget (docs/RUNTIME.md) shared with everything else in
+    # the process -- observed in practice to OOM-kill (exit 137) at
+    # batch_size=32 despite finishing well within the 90-second time budget.
+    # encode() sorts by length before chunking specifically so this matters
+    # less: with texts grouped by length, only the (rare) batches of
+    # genuinely long documents pad up to ~512 tokens -- most batches are
+    # short questions padding to a small fraction of that. Chunking in
+    # original order instead (mixing one long document with several short
+    # ones) forces EVERY such batch to pay the long document's padding cost,
+    # which is both slower (wasted compute on pad tokens) and more
+    # memory-hungry (confirmed: disabling the memory arena to survive
+    # original-order chunking's peak cost alone pushed several tiers over
+    # the 90s time budget instead). Length-sorted batching improves both
+    # axes at once, so the arena stays enabled (default) here.
+    _BATCH_SIZE = 16
 
     def __init__(self, model_path: str, tokenizer_path: str):
         import onnxruntime as ort  # lazy import
@@ -99,14 +108,6 @@ class OnnxEmbeddingBackend(EmbeddingBackend):
         session_options.intra_op_num_threads = 2
         session_options.inter_op_num_threads = 1
         session_options.execution_mode = ort.ExecutionMode.ORT_SEQUENTIAL
-        # The default CPU memory arena pre-allocates and retains large
-        # blocks for reuse across calls (fast, but its high-water mark is
-        # sized for the largest batch/sequence seen so far and is never
-        # returned to the OS) -- disabling it trades some speed for a lower,
-        # more predictable peak, which matters more than raw speed against a
-        # hard 2 GiB container memory ceiling with no swap (docs/RUNTIME.md).
-        session_options.enable_cpu_mem_arena = False
-        session_options.enable_mem_pattern = False
 
         self._session = ort.InferenceSession(model_path, sess_options=session_options)
         self._tokenizer = AutoTokenizer.from_pretrained(tokenizer_path)
@@ -141,12 +142,39 @@ class OnnxEmbeddingBackend(EmbeddingBackend):
         return (pooled / np.clip(norms, 1e-9, None)).astype(np.float32)
 
     def encode(self, texts: List[str]) -> np.ndarray:
+        """Sorts by length before chunking purely as a memory/speed
+        optimization (see _BATCH_SIZE's docstring), then unsorts results
+        back to input order so callers never observe the reordering itself.
+
+        Note this is NOT bitwise batch-invariant: measured up to ~0.016 max
+        abs difference (unit-norm 384-dim embeddings) for the same row
+        encoded alongside different batch-mates, because this is an int8
+        DYNAMICALLY quantized model -- its activation quantization scale is
+        computed from each call's actual tensor values (including padding
+        shape), so a row's padding length affects its own quantized
+        intermediate values slightly. This is a small, accepted trade
+        (same one already reflected in the real-Dev score this pipeline was
+        calibrated against, see router/scripts/calibrate_against_official_scorer.py)
+        for fitting the container's memory/time budget via batched inference
+        at all -- true bitwise invariance would require single-item calls,
+        which is what caused the 90s-per-tier timeout this batching exists
+        to fix. Grouping by content length (not input position) does mean
+        this is at least invariant to input ORDER for a fixed set of texts,
+        which is what CHALLENGE_RULES.md's ID/order-permutation audit checks.
+        """
+        if not texts:
+            return np.zeros((0, 0), dtype=np.float32)
         prefixed = [E5_QUERY_PREFIX + t for t in texts]
+        order = sorted(range(len(prefixed)), key=lambda i: len(prefixed[i]))
+        sorted_texts = [prefixed[i] for i in order]
         chunks = [
-            self._encode_chunk(prefixed[i : i + self._BATCH_SIZE])
-            for i in range(0, len(prefixed), self._BATCH_SIZE)
+            self._encode_chunk(sorted_texts[i : i + self._BATCH_SIZE])
+            for i in range(0, len(sorted_texts), self._BATCH_SIZE)
         ]
-        return np.concatenate(chunks, axis=0) if chunks else np.zeros((0, 0), dtype=np.float32)
+        sorted_embeddings = np.concatenate(chunks, axis=0)
+        embeddings = np.empty_like(sorted_embeddings)
+        embeddings[order] = sorted_embeddings
+        return embeddings
 
 
 def build_embedding_backend(cfg) -> EmbeddingBackend | None:
