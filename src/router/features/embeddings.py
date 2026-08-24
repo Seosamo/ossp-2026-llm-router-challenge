@@ -69,7 +69,16 @@ class OnnxEmbeddingBackend(EmbeddingBackend):
     # batch x seq_len x hidden intermediate tensors at once -- this has been
     # observed to fail ("bad allocation" in a MatMul node) at real Train batch
     # sizes (~1,760 rows, some near the 512-token truncation limit).
-    _BATCH_SIZE = 32
+    #
+    # Kept small (8, not 32): a batch of long (near EMBEDDING_MAX_TOKENS=512)
+    # documents pushes the transformer's per-layer attention-score tensors
+    # (batch x heads x seq x seq) into the hundreds of MB, and this container
+    # has only a 2 GiB total memory budget (docs/RUNTIME.md) shared with
+    # everything else in the process -- observed in practice to OOM-kill
+    # (exit 137) at batch_size=32 despite finishing well within the
+    # 90-second time budget. Smaller batches trade a bit of fixed per-call
+    # overhead for materially lower peak memory.
+    _BATCH_SIZE = 8
 
     def __init__(self, model_path: str, tokenizer_path: str):
         import onnxruntime as ort  # lazy import
@@ -90,6 +99,14 @@ class OnnxEmbeddingBackend(EmbeddingBackend):
         session_options.intra_op_num_threads = 2
         session_options.inter_op_num_threads = 1
         session_options.execution_mode = ort.ExecutionMode.ORT_SEQUENTIAL
+        # The default CPU memory arena pre-allocates and retains large
+        # blocks for reuse across calls (fast, but its high-water mark is
+        # sized for the largest batch/sequence seen so far and is never
+        # returned to the OS) -- disabling it trades some speed for a lower,
+        # more predictable peak, which matters more than raw speed against a
+        # hard 2 GiB container memory ceiling with no swap (docs/RUNTIME.md).
+        session_options.enable_cpu_mem_arena = False
+        session_options.enable_mem_pattern = False
 
         self._session = ort.InferenceSession(model_path, sess_options=session_options)
         self._tokenizer = AutoTokenizer.from_pretrained(tokenizer_path)
