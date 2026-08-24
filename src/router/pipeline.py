@@ -6,9 +6,7 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
-from typing import Dict, List
-
-import pandas as pd
+from typing import TYPE_CHECKING, Dict, List
 
 from router import config as default_config
 from router.config import K_M, MODELS, TOKEN_ACCOUNTING, get_lambda
@@ -17,6 +15,16 @@ from router.features.extractor import FeatureExtractor
 from router.models.input_tokens import InputTokenLinearModel, build_simple_features, train_input_token_models
 from router.models.output_tokens import OutputTokenQuantileModel, train_output_token_models
 from router.models.win_probability import WinProbabilityModel, train_all_win_probability_models
+
+if TYPE_CHECKING:
+    # pandas is a training/offline-only dependency (see the module docstring
+    # in router/models/*.py) -- NOT imported at module level here, so that
+    # inference-only callers (e.g. ossp_router.learned_router) can import
+    # RouterPipeline without pandas installed at all (it is deliberately left
+    # out of container/requirements-runtime.txt). This import only runs for
+    # type checkers, never at runtime, thanks to `from __future__ import
+    # annotations` above.
+    import pandas as pd
 
 
 class RouterPipeline:
@@ -132,6 +140,8 @@ class RouterPipeline:
         """
         if not self._fitted:
             raise RuntimeError("RouterPipeline.predict_batch called before fit")
+        import pandas as pd  # training/offline-only dependency -- see the TYPE_CHECKING import above
+
         records = []
         for _, row in df.iterrows():
             result = self._predict_row(row["text"], tier)

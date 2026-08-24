@@ -8,16 +8,20 @@ queries where models tie (§1.3) don't dominate training signal.
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Dict
+from typing import TYPE_CHECKING, Dict
 
 import joblib
 import lightgbm as lgb
 import numpy as np
-import pandas as pd
 from sklearn.isotonic import IsotonicRegression
 
 from router.config import LGBM_COMMON_PARAMS, MODELS
-from router.schema import compute_regret_weights, explode_to_attempts
+
+if TYPE_CHECKING:
+    # pandas + router.schema (also pandas-based) are training-only -- see
+    # train_all_win_probability_models below, where both are imported lazily
+    # so WinProbabilityModel (used at inference) doesn't require pandas.
+    import pandas as pd
 
 
 class WinProbabilityModel:
@@ -70,6 +74,8 @@ def train_all_win_probability_models(
     a merge back onto `episode_id`; callers should pass a features lookup keyed the
     same way (see pipeline.py for the concrete wiring).
     """
+    from router.schema import compute_regret_weights, explode_to_attempts  # training-only, see TYPE_CHECKING import above
+
     rng = np.random.default_rng(seed)
     n = len(train_df)
     calib_mask = rng.random(n) < calib_fraction

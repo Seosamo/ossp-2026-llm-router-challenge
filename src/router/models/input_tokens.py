@@ -9,15 +9,20 @@ token mass, so input-token error is swamped. Do not overbuild this component.
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Dict, List
+from typing import TYPE_CHECKING, Dict, List
 
 import joblib
 import numpy as np
-import pandas as pd
 from sklearn.linear_model import Ridge
 
 from router.config import MODELS
 from router.features.handcrafted import extract_handcrafted
+
+if TYPE_CHECKING:
+    # pandas is a training-only dependency -- see train_input_token_models
+    # below (InputTokenLinearModel/build_simple_features, used at inference,
+    # never need it).
+    import pandas as pd
 
 _SIMPLE_FEATURE_NAMES = ["char_len", "word_len", "digit_ratio", "uppercase_ratio", "punctuation_ratio"]
 

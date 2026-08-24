@@ -10,14 +10,18 @@ Auxiliary: alpha=0.5 (median) -- diagnostic only, never fed into the cost formul
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Dict
+from typing import TYPE_CHECKING, Dict
 
 import joblib
 import lightgbm as lgb
 import numpy as np
-import pandas as pd
 
 from router.config import LGBM_COMMON_PARAMS, MODELS
+
+if TYPE_CHECKING:
+    # pandas is a training-only dependency -- see train_output_token_models
+    # below (OutputTokenQuantileModel itself, used at inference, never needs it).
+    import pandas as pd
 
 # TODO(future, not required for this scaffold): a per-query output-token variance /
 # outlier flag, to let the decision rule react to unusually uncertain predictions
