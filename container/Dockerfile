@@ -16,10 +16,17 @@
 # "pip install torch" resolves to a build with several GB of bundled NVIDIA
 # CUDA libraries on linux/aarch64 (server-GPU support this CPU-only, GPU-less
 # container never uses -- docs/RUNTIME.md), which alone blows the 1 GiB
-# compressed-image budget. The exported {model.int8.onnx, tokenizer files}
-# under artifacts/e5-small-onnx/ are produced offline by
+# compressed-image budget. The exported {model.onnx, tokenizer files} under
+# artifacts/e5-small-onnx/ are produced offline by
 # router/scripts/export_embedding_onnx.py and just copied in here -- nothing
 # is downloaded at build OR run time for the model itself.
+#
+# Ships the fp32 export, NOT the int8-quantized one router/config.py's
+# comment describes trying first: onnxruntime's CPU int8 GEMM kernels were
+# observed to be dramatically slower than fp32 on real arm64 hardware (880
+# rows did not finish in 5+ minutes on Apple Silicon, vs 33s fp32 on a
+# weaker x86_64 laptop) -- likely unoptimized ARM int8 code paths. fp32 costs
+# ~350MB more image size, still comfortably under budget.
 #
 # Multi-stage: the builder stage has pip; the final stage copies only the
 # installed packages + baked model files + app code, and (matching the
@@ -80,18 +87,18 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
 COPY --chown=65532:65532 src container/entrypoint.py /opt/router/
 COPY --chown=65532:65532 artifacts/router-model /opt/router/artifacts/router-model
 
-# model.int8.onnx is committed to git split into <100MB chunks
-# (model.int8.onnx.part-NN) because GitHub rejects files over 100MB without
-# Git LFS -- and LFS was deliberately avoided here: an evaluator that clones
-# or exports the repo without running `git lfs pull` would silently get a
-# tiny LFS pointer file instead of the real model, which the router would
-# then try to load as an ONNX graph and fail (or worse, fail in a way that's
-# not obviously about LFS). Plain chunked files reassembled at build time
-# have no such failure mode -- `git clone` always gets the real bytes.
+# model.onnx is committed to git split into <100MB chunks
+# (model.onnx.part-NN) because GitHub rejects files over 100MB without Git
+# LFS -- and LFS was deliberately avoided here: an evaluator that clones or
+# exports the repo without running `git lfs pull` would silently get a tiny
+# LFS pointer file instead of the real model, which the router would then
+# try to load as an ONNX graph and fail (or worse, fail in a way that's not
+# obviously about LFS). Plain chunked files reassembled at build time have
+# no such failure mode -- `git clone` always gets the real bytes.
 COPY --chown=65532:65532 artifacts/e5-small-onnx/tokenizer.json artifacts/e5-small-onnx/tokenizer_config.json artifacts/e5-small-onnx/special_tokens_map.json /opt/router/artifacts/e5-small-onnx/
-COPY artifacts/e5-small-onnx/model.int8.onnx.part-* /tmp/onnx-parts/
-RUN cat /tmp/onnx-parts/model.int8.onnx.part-* > /opt/router/artifacts/e5-small-onnx/model.int8.onnx \
-    && chown 65532:65532 /opt/router/artifacts/e5-small-onnx/model.int8.onnx \
+COPY artifacts/e5-small-onnx/model.onnx.part-* /tmp/onnx-parts/
+RUN cat /tmp/onnx-parts/model.onnx.part-* > /opt/router/artifacts/e5-small-onnx/model.onnx \
+    && chown 65532:65532 /opt/router/artifacts/e5-small-onnx/model.onnx \
     && rm -rf /tmp/onnx-parts
 
 WORKDIR /opt/router

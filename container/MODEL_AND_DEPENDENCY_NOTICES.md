@@ -21,35 +21,42 @@ submission image. This covers the learned router
   `router/config.py`'s `EMBEDDING_MODEL_PRIMARY_REVISION`)
 - **License**: MIT (weights are openly published, satisfying
   `docs/CHALLENGE_RULES.md`'s "가중치를 공개한 모델" requirement)
-- **Not shipped as originally published** -- exported to ONNX and
-  int8-quantized offline by `router/scripts/export_embedding_onnx.py`
-  (base `AutoModel` graph, output `last_hidden_state`; mean-pooling and
-  L2-normalization are done by hand in `OnnxEmbeddingBackend`, replicating
-  what `sentence-transformers` does internally). Verified numerically
-  identical (cosine similarity 1.0, max abs diff 0.0 across sample texts) to
-  the original model's embeddings before quantization; the shipped
-  int8-quantized version trades a small, accepted accuracy loss (cosine
-  similarity ~0.987-0.99 vs. the unquantized export) for a ~4x size
-  reduction (470MB -> 118MB) -- necessary to fit the container's 1 GiB
-  compressed-image budget (`docs/RUNTIME.md`). The `router.RouterPipeline`
-  was retrained/recalibrated against this exact exported model, not the
-  original, so training-time and inference-time features match exactly.
+- **Not shipped as originally published** -- exported to ONNX offline by
+  `router/scripts/export_embedding_onnx.py` (base `AutoModel` graph, output
+  `last_hidden_state`; mean-pooling and L2-normalization are done by hand in
+  `OnnxEmbeddingBackend`, replicating what `sentence-transformers` does
+  internally). Verified numerically identical (cosine similarity 1.0, max
+  abs diff 0.0 across sample texts) to the original model's embeddings.
+  `router.RouterPipeline` was retrained/recalibrated against this exact
+  exported model, not the original, so training-time and inference-time
+  features match exactly.
+- **fp32, not int8**: an int8-dynamically-quantized export (470MB -> 118MB)
+  was tried first for extra image-size margin, but onnxruntime's CPU int8
+  GEMM kernels turned out to be dramatically slower than fp32 on real arm64
+  hardware -- 880 Dev rows did not finish in 5+ minutes on Apple Silicon at
+  full CPU utilization, versus 33 seconds for the equivalent fp32
+  `sentence-transformers` backend on a weaker x86_64 laptop -- likely
+  missing/unoptimized ARM int8 dot-product code paths in this onnxruntime
+  build. fp32 costs ~350MB more image size, still comfortably under the
+  1 GiB compressed-image budget (`docs/RUNTIME.md`) alongside everything
+  else in the image.
 - **Why not shipped via `sentence-transformers`/torch directly**: plain
   `pip install torch` on linux/aarch64 resolves to a build bundling several
   GB of NVIDIA CUDA libraries (server-GPU support this CPU-only, GPU-less
   container never uses), which alone exceeded the 1 GiB compressed-image
   budget. `onnxruntime` has no such dependency.
-- **Committed as split files**: `artifacts/e5-small-onnx/model.int8.onnx.part-00/01/02`
-  (each <42MB) instead of one 118MB file, because GitHub rejects files over
-  100MB without Git LFS. Git LFS was deliberately avoided: an evaluator that
-  clones/exports the repo without `git lfs pull` would silently get tiny LFS
-  pointer files instead of the real model. `container/Dockerfile`
-  reassembles the parts (`cat model.int8.onnx.part-* > model.int8.onnx`) at
-  build time; a plain `git clone` always has the real bytes, so this has no
-  such failure mode. Reassembly was verified byte-identical to the original
-  file (SHA-256 `a7c69598a26e0f4d6de0e685fa816c20bfba2fcf74d95857faac547bb5fd69e9`)
-  before the original was deleted from the working tree.
-- Not fine-tuned; used as published (aside from the ONNX export + quantization above).
+- **Committed as split files**: `artifacts/e5-small-onnx/model.onnx.part-00`
+  through `part-11` (each <42MB) instead of one 470.9MB file, because GitHub
+  rejects files over 100MB without Git LFS. Git LFS was deliberately
+  avoided: an evaluator that clones/exports the repo without `git lfs pull`
+  would silently get tiny LFS pointer files instead of the real model.
+  `container/Dockerfile` reassembles the parts
+  (`cat model.onnx.part-* > model.onnx`) at build time; a plain `git clone`
+  always has the real bytes, so this has no such failure mode. Reassembly
+  was verified byte-identical to the original file (SHA-256
+  `4dc9b3cff9b7f6720c421dc978e2ebc73eae6bb7164fe099d759c8a7b55a478e`) before
+  the original was deleted from the working tree.
+- Not fine-tuned; used as published (aside from the ONNX export above).
 
 ## Python runtime dependencies (`container/requirements-runtime.txt`)
 

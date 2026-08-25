@@ -121,10 +121,15 @@ EMBEDDING_BACKEND: Literal["sentence_transformers", "onnxruntime"] = "onnxruntim
 # the container's baked-in path (e.g. /opt/router/artifacts/e5-small-onnx,
 # set by container/Dockerfile) without a code change.
 EMBEDDING_ONNX_DIR: str = os.environ.get("ROUTER_EMBEDDING_ONNX_DIR", "router/artifacts/e5-small-onnx")
-# int8 dynamic quantization: 470MB -> 118MB, verified against the fp32 export
-# at cosine similarity ~0.987-0.99 (a small, accepted accuracy trade for
-# fitting the image-size budget with real margin).
-EMBEDDING_ONNX_MODEL_FILENAME: str = "model.int8.onnx"
+# int8 dynamic quantization (model.int8.onnx, 470MB -> 118MB) was tried first
+# for extra image-size margin, but onnxruntime's CPU int8 GEMM kernels turned
+# out to be dramatically SLOWER than fp32 on real arm64 hardware (observed:
+# 880 rows did not finish in 5+ minutes on Apple Silicon at 200% CPU, vs 33s
+# for the equivalent fp32 sentence-transformers backend on a weaker x86_64
+# laptop) -- likely missing/unoptimized ARM int8 dot-product code paths.
+# fp32 costs ~350MB more image size (still comfortably under the 1 GiB
+# budget alongside everything else) and is the one actually shipped.
+EMBEDDING_ONNX_MODEL_FILENAME: str = "model.onnx"
 
 # Primary per §5.1: 384-dim, MIT license, chosen for its small size relative to the
 # 1,760-example training set (larger models were observed/reasoned to overfit).
