@@ -75,7 +75,15 @@ class OnnxEmbeddingBackend(EmbeddingBackend):
     # seq) into the hundreds of MB, and this container has only a 2 GiB
     # total memory budget (docs/RUNTIME.md) shared with everything else in
     # the process -- observed in practice to OOM-kill (exit 137) at
-    # batch_size=32 despite finishing well within the 90-second time budget.
+    # batch_size=32 WITHOUT length-sorting, despite finishing well within
+    # the 90-second time budget. With sorting (below) confirmed safe on
+    # memory (observed ~40% of the 2 GiB budget mid-run at batch_size=16),
+    # so batch_size was raised back to 32 for the fixed per-call overhead
+    # (tokenizer + Python loop + session.run()) savings -- fp32 inference
+    # was found to need this margin: it landed right at the 90s ceiling at
+    # batch_size=16 on real arm64 hardware (int8 was far worse on the same
+    # hardware -- see EMBEDDING_ONNX_MODEL_FILENAME's comment in config.py --
+    # so this is tuning fp32's margin, not fixing a second quantization bug).
     # encode() sorts by length before chunking specifically so this matters
     # less: with texts grouped by length, only the (rare) batches of
     # genuinely long documents pad up to ~512 tokens -- most batches are
@@ -87,7 +95,7 @@ class OnnxEmbeddingBackend(EmbeddingBackend):
     # original-order chunking's peak cost alone pushed several tiers over
     # the 90s time budget instead). Length-sorted batching improves both
     # axes at once, so the arena stays enabled (default) here.
-    _BATCH_SIZE = 16
+    _BATCH_SIZE = 32
 
     def __init__(self, model_path: str, tokenizer_path: str):
         import onnxruntime as ort  # lazy import
