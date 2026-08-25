@@ -11,27 +11,22 @@
 # docs/SUBMISSION.md) -- see BASE_IMAGE.md for this base's pinned digest and
 # rationale.
 #
-# The embedding branch uses ONNX Runtime (router/config.py's
-# EMBEDDING_BACKEND="onnxruntime"), NOT sentence-transformers/torch: plain
-# "pip install torch" resolves to a build with several GB of bundled NVIDIA
-# CUDA libraries on linux/aarch64 (server-GPU support this CPU-only, GPU-less
-# container never uses -- docs/RUNTIME.md), which alone blows the 1 GiB
-# compressed-image budget. The exported {model.onnx, tokenizer files} under
-# artifacts/e5-small-onnx/ are produced offline by
-# router/scripts/export_embedding_onnx.py and just copied in here -- nothing
-# is downloaded at build OR run time for the model itself.
-#
-# Ships the fp32 export, NOT the int8-quantized one router/config.py's
-# comment describes trying first: onnxruntime's CPU int8 GEMM kernels were
-# observed to be dramatically slower than fp32 on real arm64 hardware (880
-# rows did not finish in 5+ minutes on Apple Silicon, vs 33s fp32 on a
-# weaker x86_64 laptop) -- likely unoptimized ARM int8 code paths. fp32 costs
-# ~350MB more image size, still comfortably under budget.
+# router/config.py's USE_EMBEDDING_BRANCH=False: the §10.1 ARM latency/memory
+# gate FAILED. An ONNX Runtime CPU embedding branch (intfloat/multilingual-
+# e5-small) was built and tuned (fp32 export, thread caps, length-sorted
+# batching, a memory-pattern-cache leak fix) but still needed ~150s for real
+# Train+Dev on real arm64 hardware (Apple Silicon) -- over the
+# 90-seconds-per-tier budget with no further safe lever found in the time
+# available. The shipped pipeline is TF-IDF+SVD+handcrafted features only
+# (router/features/lexical.py, handcrafted.py); no embedding model, no
+# onnxruntime/transformers/torch in this image at all. See
+# router/features/embeddings.py's module docstring for the full history if
+# the embedding branch is revisited post-deadline.
 #
 # Multi-stage: the builder stage has pip; the final stage copies only the
-# installed packages + baked model files + app code, and (matching the
-# original single-stage example) removes pip/setuptools/wheel from the final
-# image since nothing is installed at runtime.
+# installed packages + app code, and (matching the original single-stage
+# example) removes pip/setuptools/wheel from the final image since nothing
+# is installed at runtime.
 
 FROM python:3.11-slim-bookworm AS builder
 
@@ -62,9 +57,6 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
     TMPDIR=/tmp \
     ROUTER_PIPELINE_DIR=/opt/router/artifacts/router-model \
-    ROUTER_EMBEDDING_ONNX_DIR=/opt/router/artifacts/e5-small-onnx \
-    HF_HUB_OFFLINE=1 \
-    TRANSFORMERS_OFFLINE=1 \
     OPENBLAS_NUM_THREADS=1 \
     OMP_NUM_THREADS=1 \
     MKL_NUM_THREADS=1 \
@@ -77,29 +69,12 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
 # (matching the *host's* core count) and hitting the container's
 # --pids-limit 32 (process+thread total, docs/RUNTIME.md), with every failed
 # pthread_create burning time inside the 90-seconds-per-tier budget. The
-# OPENBLAS/OMP/MKL/NUMEXPR *_NUM_THREADS env vars above are the fix;
+# OPENBLAS/OMP/MKL/NUMEXPR *_NUM_THREADS env vars above are the fix.
 # LightGBM is separately pinned via router/config.py's LGBM_COMMON_PARAMS
-# (num_threads=1, load-bearing for validate.py's repeatability check), and
-# onnxruntime's own thread pool is capped in code
-# (router/features/embeddings.py::OnnxEmbeddingBackend) since it does not
-# reliably honor these environment variables.
+# (num_threads=1, load-bearing for validate.py's repeatability check).
 
 COPY --chown=65532:65532 src container/entrypoint.py /opt/router/
 COPY --chown=65532:65532 artifacts/router-model /opt/router/artifacts/router-model
-
-# model.onnx is committed to git split into <100MB chunks
-# (model.onnx.part-NN) because GitHub rejects files over 100MB without Git
-# LFS -- and LFS was deliberately avoided here: an evaluator that clones or
-# exports the repo without running `git lfs pull` would silently get a tiny
-# LFS pointer file instead of the real model, which the router would then
-# try to load as an ONNX graph and fail (or worse, fail in a way that's not
-# obviously about LFS). Plain chunked files reassembled at build time have
-# no such failure mode -- `git clone` always gets the real bytes.
-COPY --chown=65532:65532 artifacts/e5-small-onnx/tokenizer.json artifacts/e5-small-onnx/tokenizer_config.json artifacts/e5-small-onnx/special_tokens_map.json /opt/router/artifacts/e5-small-onnx/
-COPY artifacts/e5-small-onnx/model.onnx.part-* /tmp/onnx-parts/
-RUN cat /tmp/onnx-parts/model.onnx.part-* > /opt/router/artifacts/e5-small-onnx/model.onnx \
-    && chown 65532:65532 /opt/router/artifacts/e5-small-onnx/model.onnx \
-    && rm -rf /tmp/onnx-parts
 
 WORKDIR /opt/router
 

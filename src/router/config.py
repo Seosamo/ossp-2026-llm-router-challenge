@@ -106,7 +106,15 @@ def get_lambda(tier: str, accounting: str | None = None) -> float:
 # --- Embedding branch (§5.1, §10.1) ------------------------------------------
 # Whether the ARM-latency-gated embedding branch runs at all. Flip to False to fall
 # back to TF-IDF-only mode (§10.1 "실패" path) without restructuring the extractor.
-USE_EMBEDDING_BRANCH: bool = True
+#
+# §10.1 ARM gate: FAILED. On real arm64 hardware (Apple Silicon, not
+# emulated), the embedding branch (ONNX Runtime, fp32, EMBEDDING_MAX_TOKENS
+# trimmed 512->256, batch_size=16, memory-pattern leak fixed) still needed
+# 150s for real Train+Dev -- well over the 90s-per-tier budget
+# (docs/RUNTIME.md) with no further safe lever found in the time available
+# before the submission deadline. TF-IDF+handcrafted only (this setting) is
+# what ships; router.RouterPipeline was retrained/recalibrated for this.
+USE_EMBEDDING_BRANCH: bool = False
 
 # §10.1 ARM latency/image-size gate result: "sentence_transformers" pulls in
 # torch, which resolves to a multi-GB CUDA-bundled build on linux/arm64 and
