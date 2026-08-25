@@ -116,6 +116,19 @@ class OnnxEmbeddingBackend(EmbeddingBackend):
         session_options.intra_op_num_threads = 2
         session_options.inter_op_num_threads = 1
         session_options.execution_mode = ort.ExecutionMode.ORT_SEQUENTIAL
+        # enable_mem_pattern makes onnxruntime learn and cache a reusable
+        # memory layout PER DISTINCT INPUT SHAPE it sees. encode()'s
+        # length-sorted batching deliberately varies sequence length chunk
+        # to chunk (short-text chunks vs the rare long-document chunks), so
+        # a single embedding pass over ~2,640 episodes can present on the
+        # order of 100+ distinct shapes to this session -- observed in
+        # practice as memory climbing until an OOM kill (exit 137) at
+        # essentially the same wall-clock point regardless of batch size
+        # (16 vs 32), which is the signature of a per-shape cache that never
+        # gets reclaimed rather than a single large peak. The memory arena
+        # itself stays enabled (default) for allocation speed; only the
+        # per-shape pattern cache is disabled.
+        session_options.enable_mem_pattern = False
 
         self._session = ort.InferenceSession(model_path, sess_options=session_options)
         self._tokenizer = AutoTokenizer.from_pretrained(tokenizer_path)
