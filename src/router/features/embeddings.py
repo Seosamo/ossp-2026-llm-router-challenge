@@ -95,7 +95,7 @@ class OnnxEmbeddingBackend(EmbeddingBackend):
     # original-order chunking's peak cost alone pushed several tiers over
     # the 90s time budget instead). Length-sorted batching improves both
     # axes at once, so the arena stays enabled (default) here.
-    _BATCH_SIZE = 32
+    _BATCH_SIZE = 16
 
     def __init__(self, model_path: str, tokenizer_path: str):
         import onnxruntime as ort  # lazy import
