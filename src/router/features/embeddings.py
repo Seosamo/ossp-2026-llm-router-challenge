@@ -95,7 +95,13 @@ class OnnxEmbeddingBackend(EmbeddingBackend):
     # original-order chunking's peak cost alone pushed several tiers over
     # the 90s time budget instead). Length-sorted batching improves both
     # axes at once, so the arena stays enabled (default) here.
-    _BATCH_SIZE = 32
+    #
+    # 32 was re-tried after fixing the enable_mem_pattern leak (see
+    # __init__) and still OOM-killed (exit 137) at ~120s on real arm64
+    # hardware -- confirming batch size itself (not just the leak) has a
+    # real memory ceiling here. 16 is the largest confirmed-safe value
+    # (clean completion, no OOM, at EMBEDDING_MAX_TOKENS=512 in that test).
+    _BATCH_SIZE = 16
 
     def __init__(self, model_path: str, tokenizer_path: str):
         import onnxruntime as ort  # lazy import

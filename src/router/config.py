@@ -147,7 +147,19 @@ EMBEDDING_MODEL_CONTINGENCY = "sentence-transformers/paraphrase-multilingual-Min
 # E5 convention: inputs MUST be prefixed with this string, identically at train and
 # inference time, or embedding quality silently degrades (§5.1 "필수 준수사항" #1).
 E5_QUERY_PREFIX = "query: "
-EMBEDDING_MAX_TOKENS = 512
+# Lowered from the design doc's original 512: attention cost scales
+# quadratically with sequence length, and the container's 90s-per-tier /
+# 2 GiB memory budget (docs/RUNTIME.md) could not fit real Train+Dev
+# (2,640 episodes) through the embedding branch at 512 even after fixing an
+# unrelated onnxruntime memory-pattern leak (confirmed clean completion at
+# 185s -- still ~2x over budget) on real arm64 hardware. 256 directly cuts
+# the worst-case (long-document) attention cost ~4x; most episodes are far
+# shorter than either cap so this mainly affects the rare long-context
+# episodes (e.g. the BABILong 4K/16K component, THIRD_PARTY_NOTICES.md).
+# RouterPipeline was retrained/recalibrated against this exact value --
+# changing it again requires redoing both (router/scripts/train.py,
+# router/scripts/calibrate_against_official_scorer.py).
+EMBEDDING_MAX_TOKENS = 256
 
 # --- Feature dimensionality (§5.1) -------------------------------------------
 SVD_DIMS: Dict[str, int] = {
