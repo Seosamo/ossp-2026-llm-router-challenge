@@ -1,3 +1,6 @@
+# SPDX-FileCopyrightText: Copyright 2026 SK TELECOM CO., LTD.
+# SPDX-License-Identifier: Apache-2.0
+
 """First-class deliverable (§8.1): run before every submission.
 
 Checks:

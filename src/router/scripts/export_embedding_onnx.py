@@ -1,3 +1,6 @@
+# SPDX-FileCopyrightText: Copyright 2026 SK TELECOM CO., LTD.
+# SPDX-License-Identifier: Apache-2.0
+
 """Export config.EMBEDDING_MODEL_PRIMARY to ONNX + int8-quantize it, for the
 OnnxEmbeddingBackend runtime path (features/embeddings.py, §10.1).
 

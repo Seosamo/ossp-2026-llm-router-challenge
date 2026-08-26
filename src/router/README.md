@@ -1,3 +1,8 @@
+<!--
+SPDX-FileCopyrightText: Copyright 2026 SK TELECOM CO., LTD.
+SPDX-License-Identifier: Apache-2.0
+-->
+
 # router
 
 3개 후보 모델(`ax31-light`, `ax31`, `axk1-think`) 중 쿼리마다 하나를 선택해

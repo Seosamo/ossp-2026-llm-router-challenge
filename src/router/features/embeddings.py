@@ -1,3 +1,6 @@
+# SPDX-FileCopyrightText: Copyright 2026 SK TELECOM CO., LTD.
+# SPDX-License-Identifier: Apache-2.0
+
 """Sentence embedding backends (§5.1).
 
 Two implementations behind one interface:
@@ -8,15 +11,25 @@ Two implementations behind one interface:
       even though the submission container is CPU-only, and the full stack
       does not fit the container's 1 GiB compressed-image budget
       (docs/RUNTIME.md). Kept for local development/offline training use.
-    - OnnxEmbeddingBackend: the §10.1 ARM-latency contingency path, and what
-      the submission container actually uses -- onnxruntime alone is tens of
-      MB with no torch dependency at all. ONNX Runtime has no built-in
-      pooler, so mean pooling (weighted by the attention mask) and L2
-      normalization are implemented by hand here. Verified numerically
-      identical (cosine similarity 1.0) to SentenceTransformerBackend for the
-      unquantized export; the shipped int8-quantized model trades a small,
-      accepted accuracy loss (cosine similarity ~0.987-0.99) for a ~4x size
-      reduction (470MB -> 118MB) -- see router/scripts/export_embedding_onnx.py.
+    - OnnxEmbeddingBackend: the §10.1 ARM-latency contingency path --
+      onnxruntime alone is tens of MB with no torch dependency at all. ONNX
+      Runtime has no built-in pooler, so mean pooling (weighted by the
+      attention mask) and L2 normalization are implemented by hand here.
+      Verified numerically identical (cosine similarity 1.0) to
+      SentenceTransformerBackend for the unquantized (fp32) export; an
+      int8-quantized export was also tried for extra image-size margin but
+      turned out dramatically slower than fp32 on real arm64 CPU (missing/
+      unoptimized ARM int8 GEMM kernels in this onnxruntime build), so fp32
+      was the only quantization considered viable -- see
+      router/scripts/export_embedding_onnx.py.
+
+    NOT shipped in the submission image: even the tuned fp32 ONNX path still
+    needed ~150s for real Train+Dev on real arm64 hardware, over the
+    90-seconds-per-tier budget (docs/RUNTIME.md) with no further safe lever
+    found before the deadline. `config.USE_EMBEDDING_BRANCH=False` disables
+    this branch entirely; the submission container has no onnxruntime,
+    transformers, or torch installed at all (container/requirements-runtime.txt)
+    and ships TF-IDF+SVD+handcrafted features only.
 
 Both backends apply the mandatory "query: " prefix (§5.1 필수 준수사항 #1) and
 truncate at EMBEDDING_MAX_TOKENS (#3) identically at train and inference time.

@@ -1,3 +1,6 @@
+# SPDX-FileCopyrightText: Copyright 2026 SK TELECOM CO., LTD.
+# SPDX-License-Identifier: Apache-2.0
+
 """Calibrates lambda for one tier against Dev (§6.2), writes the result as JSON.
 
 Costs are expressed as a ratio to that row's own ax31-light cost estimate, matching

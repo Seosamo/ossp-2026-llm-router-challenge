@@ -1,3 +1,6 @@
+# SPDX-FileCopyrightText: Copyright 2026 SK TELECOM CO., LTD.
+# SPDX-License-Identifier: Apache-2.0
+
 """Calibrate lambda per tier directly against ossp_router's own official Decimal
 scorer on real Dev, instead of trusting router/calibration.py's internal
 usage-rate/bootstrap proxy in isolation.

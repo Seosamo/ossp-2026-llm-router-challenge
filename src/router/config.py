@@ -1,3 +1,6 @@
+# SPDX-FileCopyrightText: Copyright 2026 SK TELECOM CO., LTD.
+# SPDX-License-Identifier: Apache-2.0
+
 """Single source of truth for every tunable constant and every not-yet-resolved switch.
 
 Every value here that the planning doc left ambiguous (§10.1, §10.2, embedding model

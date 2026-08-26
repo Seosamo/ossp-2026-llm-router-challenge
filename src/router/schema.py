@@ -1,3 +1,6 @@
+# SPDX-FileCopyrightText: Copyright 2026 SK TELECOM CO., LTD.
+# SPDX-License-Identifier: Apache-2.0
+
 """Data contract for outcomes/prompts tables, plus the label-exploding logic that
 turns the competition's "num_generations attempts, fractional score" data (§1.2)
 into a per-attempt binary classification target (§5.2).

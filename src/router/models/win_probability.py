@@ -1,3 +1,6 @@
+# SPDX-FileCopyrightText: Copyright 2026 SK TELECOM CO., LTD.
+# SPDX-License-Identifier: Apache-2.0
+
 """Win-probability classifiers (§5.2), one LightGBM binary classifier per model.
 
 Training data is exploded to the per-attempt level (schema.explode_to_attempts)

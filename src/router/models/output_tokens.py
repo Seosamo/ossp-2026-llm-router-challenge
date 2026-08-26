@@ -1,3 +1,6 @@
+# SPDX-FileCopyrightText: Copyright 2026 SK TELECOM CO., LTD.
+# SPDX-License-Identifier: Apache-2.0
+
 """Output-token p90 quantile regressors (§5.3) -- flagged in the planning doc as
 the PRIMARY / lead component of the whole system, because §1.5 found that
 per-query cost variance (not accuracy) is what makes think's routing decisions

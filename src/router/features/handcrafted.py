@@ -1,3 +1,6 @@
+# SPDX-FileCopyrightText: Copyright 2026 SK TELECOM CO., LTD.
+# SPDX-License-Identifier: Apache-2.0
+
 """Length / structural / instruction hand features (§5.1): pure functions of a
 single raw (pre-truncation) string -- these are extracted from the full text even
 though the embedding branch truncates at 512 tokens (§5.1 필수 준수사항 #3: length/

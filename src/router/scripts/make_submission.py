@@ -1,3 +1,6 @@
+# SPDX-FileCopyrightText: Copyright 2026 SK TELECOM CO., LTD.
+# SPDX-License-Identifier: Apache-2.0
+
 """Runs predict_batch on Dev, writes a submission file, then automatically runs
 validate.py's full check suite before reporting success (§8.1: run before every
 submission).

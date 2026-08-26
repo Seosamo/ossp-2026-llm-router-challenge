@@ -1,3 +1,6 @@
+# SPDX-FileCopyrightText: Copyright 2026 SK TELECOM CO., LTD.
+# SPDX-License-Identifier: Apache-2.0
+
 """Reverse test suite for validate.py itself (§8.1's "역테스트"): proves each
 check passes against a well-behaved pipeline AND fails against pipelines that
 violate the specific invariant that check is supposed to police. A validator that

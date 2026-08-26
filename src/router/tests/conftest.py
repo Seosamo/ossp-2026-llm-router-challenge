@@ -1,3 +1,6 @@
+# SPDX-FileCopyrightText: Copyright 2026 SK TELECOM CO., LTD.
+# SPDX-License-Identifier: Apache-2.0
+
 """Shared fixtures: a synthetic dataset, a small well-behaved trained pipeline, and
 two intentionally-broken pipeline fixtures used only in test_validator.py to prove
 validate.py's checks actually discriminate rather than trivially passing.

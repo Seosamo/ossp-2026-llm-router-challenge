@@ -1,3 +1,6 @@
+# SPDX-FileCopyrightText: Copyright 2026 SK TELECOM CO., LTD.
+# SPDX-License-Identifier: Apache-2.0
+
 """Input-token estimator (§5.4) -- deliberately simple.
 
 §5.4 explicitly states plain linear regression on char/word counts and character-

@@ -1,3 +1,6 @@
+# SPDX-FileCopyrightText: Copyright 2026 SK TELECOM CO., LTD.
+# SPDX-License-Identifier: Apache-2.0
+
 """§10.2 diagnostic CLI: prints, per model, the ratio of mean output_tokens
 between num_generations=4 and num_generations=2 groups.
 

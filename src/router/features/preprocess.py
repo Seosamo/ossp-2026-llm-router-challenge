@@ -1,3 +1,6 @@
+# SPDX-FileCopyrightText: Copyright 2026 SK TELECOM CO., LTD.
+# SPDX-License-Identifier: Apache-2.0
+
 """Light preprocessing (§4): NFC normalize, collapse whitespace.
 
 Pure single-string function -- never touches other rows in a batch, by

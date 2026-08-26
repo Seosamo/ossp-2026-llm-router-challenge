@@ -1,3 +1,6 @@
+# SPDX-FileCopyrightText: Copyright 2026 SK TELECOM CO., LTD.
+# SPDX-License-Identifier: Apache-2.0
+
 """Adapter between the OSSP 2026 challenge's nested-JSON wire protocol and
 router/schema.py's wide-DataFrame format.
 

@@ -1,3 +1,6 @@
+# SPDX-FileCopyrightText: Copyright 2026 SK TELECOM CO., LTD.
+# SPDX-License-Identifier: Apache-2.0
+
 """Cost estimation and the decision rule (§2, §5.5)."""
 
 from __future__ import annotations

@@ -1,3 +1,6 @@
+# SPDX-FileCopyrightText: Copyright 2026 SK TELECOM CO., LTD.
+# SPDX-License-Identifier: Apache-2.0
+
 """End-to-end orchestrator (§4): ties feature extraction, the three model
 families, and the decision rule together behind one fit/predict interface.
 """

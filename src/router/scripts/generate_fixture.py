@@ -1,3 +1,6 @@
+# SPDX-FileCopyrightText: Copyright 2026 SK TELECOM CO., LTD.
+# SPDX-License-Identifier: Apache-2.0
+
 """CLI wrapper around synthetic_data.write_fixture.
 
 Run from the repo root (parent of router/):

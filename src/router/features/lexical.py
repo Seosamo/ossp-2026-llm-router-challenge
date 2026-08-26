@@ -1,3 +1,6 @@
+# SPDX-FileCopyrightText: Copyright 2026 SK TELECOM CO., LTD.
+# SPDX-License-Identifier: Apache-2.0
+
 """TF-IDF + SVD lexical features (§5.1): word 1-2gram -> SVD(80), char 3-5gram ->
 SVD(40). Fit on Train only; frozen (pickled) for inference (§5.1 계산 위치, §8.1 B4).
 """

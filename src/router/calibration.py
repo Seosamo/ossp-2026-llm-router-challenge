@@ -1,3 +1,6 @@
+# SPDX-FileCopyrightText: Copyright 2026 SK TELECOM CO., LTD.
+# SPDX-License-Identifier: Apache-2.0
+
 """Lambda calibration (§6) and the §10.2 token-accounting-convention diagnostic.
 
 Kept as reusable, pure-function/dataclass logic (importable and unit-testable

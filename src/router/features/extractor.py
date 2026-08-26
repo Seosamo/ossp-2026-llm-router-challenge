@@ -1,3 +1,6 @@
+# SPDX-FileCopyrightText: Copyright 2026 SK TELECOM CO., LTD.
+# SPDX-License-Identifier: Apache-2.0
+
 """The frozen-at-inference FeatureExtractor (§5.1, §8.1 B4).
 
 Concatenates: embedding(128, optional) + word-tfidf-svd(80) + char-tfidf-svd(40) +
